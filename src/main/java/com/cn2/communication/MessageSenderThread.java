@@ -1,5 +1,6 @@
 package com.cn2.communication;
 
+import java.io.IOException;
 import java.net.*;
 class MessageSenderThread implements Runnable {
     private DatagramSocket socket; // This is the socket the sender thread will send data from
@@ -29,4 +30,8 @@ class MessageSenderThread implements Runnable {
             e.printStackTrace();
         }
     }
+
+    void initiateCall() throws IOException {
+		
+	}
 }

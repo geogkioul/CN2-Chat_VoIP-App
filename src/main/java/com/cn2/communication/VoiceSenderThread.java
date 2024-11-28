@@ -6,28 +6,32 @@ public class VoiceSenderThread implements Runnable {
     private DatagramSocket socket; // This is the socket the sender thread will send data from
     private InetAddress peerAddress; // This is the IP address of the peer
     private int peerPort; // This is the Transport Layer port the peer listens to
-    private TargetDataLine microphone; // The source from which audio data will be read
-
+    private boolean running = true; // A boolean to keep track if the user is on call, by default set on true
     // Define the class constructor
     public VoiceSenderThread(DatagramSocket socket, InetAddress peerAddress, int peerPort) throws LineUnavailableException {
         this.socket = socket; // Assign local socket of thread
         this.peerAddress = peerAddress; // Assign peer's IP address
         this.peerPort = peerPort; // Assign peer's port number
-
-        // Select the format that will be used to sample voice
-        AudioFormat format = new AudioFormat(44100, 16, 1, true, true);
-        DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
-        this.microphone = (TargetDataLine) AudioSystem.getLine(info);
-        this.microphone.open(format);
-        this.microphone.start();
     }
 
     // We must implement the inherited abstract method Runnable.run()
     @Override
     public void run() {
         try {
+            // Select the format that will be used to sample voice
+            AudioFormat format = new AudioFormat(44100, 16, 1, true, true);
+            DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
+            
+            if(!AudioSystem.isLineSupported(info)) {
+                throw new LineUnavailableException("Audio format not supported");
+            }
+            // Open the microphone
+            TargetDataLine microphone = (TargetDataLine) AudioSystem.getLine(info);
+            microphone.open(format);
+            microphone.start();
+
             byte[] buffer = new byte[1024]; // Create a buffer to store voice data recorded
-            while(true) {
+            while(running) {
                 // Read voice data from microphone into buffer, return number of bytes read
                 int bytesRead = microphone.read(buffer, 0, buffer.length); 
                 if(bytesRead > 0) {
@@ -39,8 +43,16 @@ public class VoiceSenderThread implements Runnable {
                     socket.send(packet); // Send the created packet through the local socket
                 }
             }
+            // When the user is no more on call close the mic
+            microphone.stop();
+            microphone.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+    // Implement a function to stop the thread, when the user is no more on call
+    // This function can be used by main
+    public void stop() {
+        running = false;
     }
  }

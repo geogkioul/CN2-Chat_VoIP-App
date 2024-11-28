@@ -41,6 +41,17 @@ class ReceiverThread implements Runnable {
     
     private void handleTextMessage(String message) {
         // Create an appendMessage(message) function in app that takes the message and shows it to the text frame
+        if (message.equals("CALL_REQUEST")) {
+            App.textArea.append("Incoming call request...");
+            // Create two buttons accept or reject
+            // Disable the call button while the other peer is calling you
+            // Put the responsibility to the main app to change the GUI
+            // Left to implement: App.callingScreen()
+        } else if (message.equals("CALL_END")) {
+            // To implement: endCall()
+        } else {
+            App.textArea.append("Peer: " + message);
+        }
     }
 
     private void handleVoiceData(byte[] audioData) {
