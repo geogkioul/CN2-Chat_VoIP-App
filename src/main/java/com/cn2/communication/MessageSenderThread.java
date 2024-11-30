@@ -37,8 +37,7 @@ class MessageSenderThread implements Runnable {
 
     private void sendMessage(String message) throws Exception {
         try{
-            String prefixedMessage = "MSG" + message;
-            byte[] data = prefixedMessage.getBytes(); // Convert the message string to bytes after adding header
+            byte[] data = message.getBytes(); // Convert the message string to bytes after adding header
             // Create a packet with the contents of the message to send to specific IP and Port of peer
             DatagramPacket packet = new DatagramPacket(data, data.length, peerAddress, peerPort);
             socket.send(packet); // Send the packet through the local socket

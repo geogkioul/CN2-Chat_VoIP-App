@@ -40,13 +40,16 @@ public class App extends Frame implements WindowListener, ActionListener {
 	// We will also define some queues that will ensure safe data exchange between threads
 	
 	private BlockingQueue<String> outgoingMessages = new LinkedBlockingQueue<>();
-	private BlockingQueue<String> incomingMessages = new LinkedBlockingQueue<>();
-	
+	private BlockingQueue<String> incomingMessages = new LinkedBlockingQueue<>();	
+
+	private BlockingQueue<String> incomingControl = new LinkedBlockingQueue<>();
 	
 	private MessageSenderThread messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
-	private ReceiverThread receiverThread = new ReceiverThread(socket, incomingMessages); // The thread that will handle receiving packets
+	private ReceiverThread receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl); // The thread that will handle receiving packets
 	
-	
+	// Define a boolean variable to keep track of the user being on call
+	private boolean isOnCall;
+
 	/**
 	 * Construct the app's frame and initialize important parameters
 	 */
@@ -99,6 +102,8 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 		// Start the thread that checks for new incoming messages
 		checkIncomingThread();
+		checkCommandsThread();
+		isOnCall = false; // false by default
 	}
 	
 	/**
@@ -142,12 +147,32 @@ public class App extends Frame implements WindowListener, ActionListener {
 			sendMessage();
 		} else if(event.getSource() == callButton){
 			// The "Call" button was clicked
-			
+			if (!isOnCall) {
+				startCall();
+			} else {
+				endCall();
+			}
+			updateCallButton();
 		} else if(event.getSource() == inputTextField){
 			// Enter was pressed
 			sendMessage();
 		}
 	}
+
+	private void updateCallButton() {
+		if(isOnCall) {
+			callButton.setText("End Call");
+		} else {
+			callButton.setText("Call");
+		}
+	}
+
+
+
+
+	/* MESSAGES LOGIC */
+
+
 
 	// The function sendMessage will take the message from inputTextField and put it in the outgoing queue
 	// the message sender will take on from that point.
@@ -156,7 +181,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		String message = inputTextField.getText();
 			if(!message.isEmpty()){ // send only if there is something written in input field
 				try {
-					outgoingMessages.put(message); // put message to the queue
+					outgoingMessages.put("MSG" + message); // put message to the queue, added message header
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
@@ -186,74 +211,121 @@ public class App extends Frame implements WindowListener, ActionListener {
 		textArea.append(message + newline); // Show the message in the text area
 	}
 
+
+
+
+	/* CONTROL LOGIC */
+
+
+
+
+
+	// This is a helper thread that will check the incomingControl queue for new commands
+	private void checkCommandsThread() {
+		new Thread(() -> {
+			while (true) {
+				try {
+					// Check queue for new messages
+					String newCommand = incomingControl.take(); // This blocks until a message is available
+					handleCommands(newCommand);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}
+		}).start();
+	}
+	
+	// This function will handle the commands based on the command message
+	private void handleCommands(String command) {
+		switch (command) {
+			case "CALL_REQUEST":
+				callRequested();
+				break;
+			case "CALL_ACCEPT":
+				// start voice sending thread
+				break;
+			case "CALL_DENY":
+				isOnCall = false;
+				updateCallButton();
+				break;
+			case "CALL_END":
+				isOnCall = false;
+				updateCallButton();
+				// stop voice sending
+			default:
+				break;
+		}
+	}
+
+	
+
+
+
+	/* CALLING LOGIC */
+
+
+
+
+	private void startCall() {
+		String command = "CALL_REQUEST";
+		try {
+			outgoingMessages.put("CTL" + command); // put command to the queue, added control header
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		isOnCall = true;
+	}
+
+	private void endCall() {
+		String command = "CALL_END";
+		try {
+			outgoingMessages.put("CTL" + command);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		isOnCall = false;
+	}
+	
+	private void callRequested() {
+		String[] options = {"Accept Call", "Deny Call"};
+		int choise = JOptionPane.showOptionDialog(null, "Incoming Call Request", "Call Request", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
+		if(choise == JOptionPane.YES_OPTION) {
+			displayMessage("Call Accepted");
+			isOnCall = true;
+			updateCallButton();
+			String command = "CALL_ACCEPT";
+			try {
+				outgoingMessages.put("CTL" + command); // put message to the queue, added control header
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			// Change call button to end call
+			// Start voice thread
+		
+		} else if (choise == JOptionPane.NO_OPTION) {
+			displayMessage("Call Denied");
+			isOnCall = false;
+			updateCallButton();
+			String command = "CALL_DENY";
+			try {
+				outgoingMessages.put("CTL" + command); // put message to the queue, added control header
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
 		/*THE CALLING PROCESS
 	 * 1) The peer initiating the call sends a speciall call initiation message "CALL_REQUEST" to the other peer
-	 * 2) The receiver responds with a call acknowledgment message to confirm they are ready "CALL_ACCEPTED"
-	 * 	  or else they can send a call rejection message if they don't want to accept the call "CALL_REJECTED"
+	 * 2) The receiver responds with a call acknowledgment message to confirm they are ready "CALL_ACCEPT"
+	 * 	  or else they can send a call rejection message if they don't want to accept the call "CALL_DENY"
 	 * 3) Once the call is accepted both peers start the voice sender thread to transmit audio
 	 * 4) Both peers start exchanging audio through the UDP socket, while they can still send messages
 	 * 5) Call ending: when either peer decides to end the call they send a call termination message "CALL_END"
 	 *    to notify the other peer
 	 * 	  Both peers stop their voice sending threads and release audio resources
 	*/
-	// Sending a call request
-	/* To be implemented
-	void initiateCall() throws IOException {
-		String callRequest = "CALL_REQUEST";
-		byte[] data = callRequest.getBytes();
-		DatagramPacket packet = new DatagramPacket(data, data.length, peerAddress, peerPort);
-		socket.send(packet);
-		textArea.append("Calling peer...");
-	}
-
-	void acceptCall() throws IOException {
-		String callAccept = "CALL_ACCEPT";
-		byte[] data = callAccept.getBytes();
-		DatagramPacket packet = new DatagramPacket(data, data.length, peerAddress, peerPort);
-		socket.send(packet);
-		textArea.append("Call accepted.");
-		new Thread(new VoiceSenderThread(socket, peerAddress, peerPort)).start();; // Set up audio resources
-	}
-
-	void rejectCall() throws IOException {
-		String callRejected = "CALL_REJECTED";
-		byte[] data = callRejected.getBytes();
-		DatagramPacket packet = new DatagramPacket(data, data.length, peerAddress, peerPort);
-		socket.send(packet);
-	}
 	
-	public static void handleIncomingCallRequest() {
-		// Show accept/reject buttons
-		// Disable the call button
-		int response = JOptionPane.showConfirmDialog(frame, "Incoming call request. Accept?", "Call Request", JOptionPane.YES_NO_OPTION);
-		if(response == JOptionPane.YES_OPTION) { // if the user accepts the incoming call
-			try {
-				// Accept call
-				textArea.append("Accepted call" + newline);
-				acceptCall();
-			} catch (IOException e) {
-				textArea.append("Error accepting call: " + e.getMessage() + newline);
-			}
-		} else {
-			try {
-				// Reject call
-				textArea.append("Rejected call" + newline);
-				rejectCall();
-			} catch (IOException e) {
-				textArea.append("Error rejecting call: " + e.getMessage() + newline);
-			}
-		}
-	}
-
-	public static void endCall() {
-		// Reset call UI state
-		textArea.append("Call ended." + newline);
-	}
-
-	public static void playVoiceData(byte[] audioData) {
-		// Implement audio playback using SourceDataLine
-	}
-	*/
 	
 	/**
 	 * These methods have to do with the GUI. You can use them if you wish to define

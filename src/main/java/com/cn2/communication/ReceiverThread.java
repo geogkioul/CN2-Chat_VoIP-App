@@ -5,12 +5,15 @@ import java.util.concurrent.BlockingQueue;
 class ReceiverThread implements Runnable {
     private DatagramSocket socket; // This is the socket the receiver thread will receive data from
     private BlockingQueue<String> incomingMessages; // The queue that the receiver will put the received messages into
+    private BlockingQueue<String> incomingControl; // The queue that the receiver will put the control commands into
+
     private static final int BUFFER_SIZE = 2048; // Maximum buffer size for incoming packets
 
     // Define the class constructor
-    public ReceiverThread(DatagramSocket socket, BlockingQueue<String> incomingMessages) {
+    public ReceiverThread(DatagramSocket socket, BlockingQueue<String> incomingMessages, BlockingQueue<String> incomingControl) {
         this.socket = socket; // Assign the socket of the thread
         this.incomingMessages = incomingMessages; // Assign the incoming messages queue
+        this.incomingControl = incomingControl; // Assign the incoming messages queue
     }
     // We must implement the inherited abstract method Runnable.run()
     @Override
@@ -50,7 +53,7 @@ class ReceiverThread implements Runnable {
                     // handleVoiceData(data);
                     break;
                 case "CTL": 
-                    // handleControlMessage(new String(data));
+                    handleControlCommand(new String(data));
                     break;
                 default:
                 System.err.println("Uknown header received: " + header);
@@ -73,17 +76,19 @@ class ReceiverThread implements Runnable {
         }
     }
 
+    private void handleControlCommand(String command) {
+        // Forward the message to the app to display
+        try {
+            incomingControl.put(command); // put command to the queue, let main handle it
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
     /* To be implemented
     private void handleVoiceData(byte[] audioData) {
         // Forward the audio data to the audio playback system
         App.playVoiceData(audioData);
         // TODO: Implement the playVoiceData function in the App that will forward the audio for playback
     }
-
-    private void handleControlMessage(String controlMessage) {
-        // Handle control messages like CALL_REQUEST, CALL_ACCEPT, CALL_END, etc
-        App.handleControlMessage(controlMessage);
-        // TODO: Implement the handleControlMessage function in the App that will update the call state
-    }
-    */
+    */    
 }
