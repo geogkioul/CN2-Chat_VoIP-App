@@ -1,19 +1,21 @@
 package com.cn2.communication;
 
-import java.io.*;
 import java.net.*;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JTextField;
-import javax.sound.sampled.SourceDataLine;
 import javax.swing.JButton;
 import javax.swing.JTextArea;
 import javax.swing.JScrollPane;
 
 import java.awt.*;
 import java.awt.event.*;
+
 import java.lang.Thread;
+
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 public class App extends Frame implements WindowListener, ActionListener {
 
@@ -34,13 +36,16 @@ public class App extends Frame implements WindowListener, ActionListener {
 	private InetAddress peerAddress; // the IP address of the peer
 	private int localPort; // the transport layer port of local host
 	private int peerPort; // the transport layer port of peer host
-
-	private Thread messageSenderThread; // The thread that will handle message sending
-	private Thread receiverThread; // The thread that will handle receiving packets
-
-	private boolean isOnCall = false; // a boolean to keep track of call status: set true if user is on a call
-	// When a call starts set isOnCall = true and start the audio sender thread
-	// When the call ends set isOnCall = false and stop the audio sender thread
+	
+	// We will also define some queues that will ensure safe data exchange between threads
+	
+	private BlockingQueue<String> outgoingMessages = new LinkedBlockingQueue<>();
+	private BlockingQueue<String> incomingMessages = new LinkedBlockingQueue<>();
+	
+	
+	private MessageSenderThread messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
+	private ReceiverThread receiverThread = new ReceiverThread(socket, incomingMessages); // The thread that will handle receiving packets
+	
 	
 	/**
 	 * Construct the app's frame and initialize important parameters
@@ -72,22 +77,28 @@ public class App extends Frame implements WindowListener, ActionListener {
 		//Setting up the buttons
 		sendButton = new JButton("Send");			
 		callButton = new JButton("Call");			
-						
+		
 		/*
-		 * 2. Adding the components to the GUI
-		 */
+		* 2. Adding the components to the GUI
+		*/
 		add(scrollPane);								
 		add(inputTextField);
 		add(sendButton);
 		add(callButton);
 		
 		/*
-		 * 3. Linking the buttons to the ActionListener
-		 */
+		* 3. Linking the buttons to the ActionListener
+		*/
 		sendButton.addActionListener(this);			
 		callButton.addActionListener(this);	
+		inputTextField.addActionListener(this);
+				
+		// Start the threads
+		new Thread(messageSenderThread).start();
+		new Thread(receiverThread).start();
 
-		
+		// Start the thread that checks for new incoming messages
+		checkIncomingThread();
 	}
 	
 	/**
@@ -99,7 +110,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		/*
 		 * 1. Create the app's window
 		 */
-		App app = new App("Computer Networks 2 - Chat & VoIP App");  // TODO: You can add the title that will displayed on the Window of the App here																		  
+		App app = new App("Chat & VoIP App");  // TODO: You can add the title that will displayed on the Window of the App here																		  
 		app.setSize(500,250);				  
 		app.setVisible(true);				  
 
@@ -108,24 +119,74 @@ public class App extends Frame implements WindowListener, ActionListener {
 		 */
 		// Prompt the user to define network parameters
 		try {
-			String ipInput = JOptionPane.showInputDialog("Please enter the IP address of the peer:");
-			app.peerAddress = InetAddress.getByName(ipInput); // assign the peer address as defined by the user
+			app.peerAddress = InetAddress.getByName(JOptionPane.showInputDialog("Please enter the IP address of the peer:")); 
 			app.localPort = Integer.parseInt(JOptionPane.showInputDialog("Please enter the local port you want to use:"));
 			app.peerPort = Integer.parseInt(JOptionPane.showInputDialog("Please specify the peer's port:"));
 
 			// Create the local socket. IP of socket set to wildcard address 0.0.0.0 which binds the users to the IPs of every local interface
 			app.socket = new DatagramSocket(app.localPort);
 
-			// Start the receiver and message sender threads
-			new Thread(new ReceiverThread(app.socket)).start();
-			new Thread(new MessageSenderThread(app.socket, app.peerAddress, app.peerPort)).start();
-
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
 
-	/*THE CALLING PROCESS
+
+	@Override
+	public void actionPerformed(ActionEvent event) {
+		/*
+		 * Check which button was clicked.
+		 */
+		if (event.getSource() == sendButton){
+			// The "Send" button was clicked
+			sendMessage();
+		} else if(event.getSource() == callButton){
+			// The "Call" button was clicked
+			
+		} else if(event.getSource() == inputTextField){
+			// Enter was pressed
+			sendMessage();
+		}
+	}
+
+	// The function sendMessage will take the message from inputTextField and put it in the outgoing queue
+	// the message sender will take on from that point.
+	// Also it will display the message in the text area
+	private void sendMessage() {
+		String message = inputTextField.getText();
+			if(!message.isEmpty()){ // send only if there is something written in input field
+				try {
+					outgoingMessages.put(message); // put message to the queue
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+				inputTextField.setText(""); // Clear the text input field			
+				// Display the message in the local text area
+				displayMessage("You: " + message);
+			}
+			
+	}
+
+	// This is a helper thread that will check the incomingMessages queue for new messages
+	private void checkIncomingThread() {
+		new Thread(() -> {
+			while (true) {
+				try {
+					// Check queue for new messages
+					String newMessage = incomingMessages.take(); // This blocks until a message is available
+					displayMessage("Peer: " + newMessage); // Display the received message
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}
+		}).start();
+	}
+
+	public static void displayMessage(String message) {
+		textArea.append(message + newline); // Show the message in the text area
+	}
+
+		/*THE CALLING PROCESS
 	 * 1) The peer initiating the call sends a speciall call initiation message "CALL_REQUEST" to the other peer
 	 * 2) The receiver responds with a call acknowledgment message to confirm they are ready "CALL_ACCEPTED"
 	 * 	  or else they can send a call rejection message if they don't want to accept the call "CALL_REJECTED"
@@ -136,6 +197,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 	 * 	  Both peers stop their voice sending threads and release audio resources
 	*/
 	// Sending a call request
+	/* To be implemented
 	void initiateCall() throws IOException {
 		String callRequest = "CALL_REQUEST";
 		byte[] data = callRequest.getBytes();
@@ -153,43 +215,52 @@ public class App extends Frame implements WindowListener, ActionListener {
 		new Thread(new VoiceSenderThread(socket, peerAddress, peerPort)).start();; // Set up audio resources
 	}
 
+	void rejectCall() throws IOException {
+		String callRejected = "CALL_REJECTED";
+		byte[] data = callRejected.getBytes();
+		DatagramPacket packet = new DatagramPacket(data, data.length, peerAddress, peerPort);
+		socket.send(packet);
+	}
 	
-	/**
-	 * The method that corresponds to the Action Listener. Whenever an action is performed
-	 * (i.e., one of the buttons is clicked) this method is executed. 
-	 */
-	@Override
-	public void actionPerformed(ActionEvent e) {
-		
-	
-
-		/*
-		 * Check which button was clicked.
-		 */
-		if (e.getSource() == sendButton){
-			
-			// The "Send" button was clicked
-			
-			// TODO: Your code goes here...
-		
-			
-		}else if(e.getSource() == callButton){
-			
-			// The "Call" button was clicked
-			
-			// TODO: Your code goes here...
-			
-			
+	public static void handleIncomingCallRequest() {
+		// Show accept/reject buttons
+		// Disable the call button
+		int response = JOptionPane.showConfirmDialog(frame, "Incoming call request. Accept?", "Call Request", JOptionPane.YES_NO_OPTION);
+		if(response == JOptionPane.YES_OPTION) { // if the user accepts the incoming call
+			try {
+				// Accept call
+				textArea.append("Accepted call" + newline);
+				acceptCall();
+			} catch (IOException e) {
+				textArea.append("Error accepting call: " + e.getMessage() + newline);
+			}
+		} else {
+			try {
+				// Reject call
+				textArea.append("Rejected call" + newline);
+				rejectCall();
+			} catch (IOException e) {
+				textArea.append("Error rejecting call: " + e.getMessage() + newline);
+			}
 		}
-			
-
 	}
 
+	public static void endCall() {
+		// Reset call UI state
+		textArea.append("Call ended." + newline);
+	}
+
+	public static void playVoiceData(byte[] audioData) {
+		// Implement audio playback using SourceDataLine
+	}
+	*/
+	
 	/**
 	 * These methods have to do with the GUI. You can use them if you wish to define
 	 * what the program should do in specific scenarios (e.g., when closing the 
 	 * window).
 	 */
+
 	@Override
 	public void windowActivated(WindowEvent e) {
 		// TODO Auto-generated method stub	
