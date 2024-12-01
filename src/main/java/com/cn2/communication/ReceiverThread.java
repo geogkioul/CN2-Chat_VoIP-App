@@ -6,14 +6,16 @@ class ReceiverThread implements Runnable {
     private DatagramSocket socket; // This is the socket the receiver thread will receive data from
     private BlockingQueue<String> incomingMessages; // The queue that the receiver will put the received messages into
     private BlockingQueue<String> incomingControl; // The queue that the receiver will put the control commands into
+    private BlockingQueue<byte[]> playbackQueue; // The queue that the receiver will put the voice data bytes into
 
     private static final int BUFFER_SIZE = 2048; // Maximum buffer size for incoming packets
 
     // Define the class constructor
-    public ReceiverThread(DatagramSocket socket, BlockingQueue<String> incomingMessages, BlockingQueue<String> incomingControl) {
+    public ReceiverThread(DatagramSocket socket, BlockingQueue<String> incomingMessages, BlockingQueue<String> incomingControl, BlockingQueue<byte[]> playbackQueue) {
         this.socket = socket; // Assign the socket of the thread
         this.incomingMessages = incomingMessages; // Assign the incoming messages queue
         this.incomingControl = incomingControl; // Assign the incoming messages queue
+        this.playbackQueue = playbackQueue; // Assign the incoming voice audio queue
     }
     // We must implement the inherited abstract method Runnable.run()
     @Override
@@ -50,13 +52,13 @@ class ReceiverThread implements Runnable {
                     handleTextMessage(new String(data));
                     break;
                 case "VOI":
-                    // handleVoiceData(data);
+                    handleVoiceData(data);
                     break;
                 case "CTL": 
                     handleControlCommand(new String(data));
                     break;
                 default:
-                System.err.println("Uknown header received: " + header);
+                    System.err.println("Uknown header received: " + header);
                     break;
             }
         } catch (Exception e) {
@@ -84,11 +86,13 @@ class ReceiverThread implements Runnable {
             e.printStackTrace();
         }
     }
-    /* To be implemented
+    
     private void handleVoiceData(byte[] audioData) {
         // Forward the audio data to the audio playback system
-        App.playVoiceData(audioData);
-        // TODO: Implement the playVoiceData function in the App that will forward the audio for playback
-    }
-    */    
+        try {
+            playbackQueue.put(audioData);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }   
 }

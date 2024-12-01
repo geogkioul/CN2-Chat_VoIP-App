@@ -41,11 +41,13 @@ public class App extends Frame implements WindowListener, ActionListener {
 	
 	private BlockingQueue<String> outgoingMessages = new LinkedBlockingQueue<>();
 	private BlockingQueue<String> incomingMessages = new LinkedBlockingQueue<>();	
-
 	private BlockingQueue<String> incomingControl = new LinkedBlockingQueue<>();
+	private BlockingQueue<byte[]> playbackQueue = new LinkedBlockingQueue<>();
 	
 	private MessageSenderThread messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
-	private ReceiverThread receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl); // The thread that will handle receiving packets
+	private ReceiverThread receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl, playbackQueue); // The thread that will handle receiving packets
+	private VoiceSenderThread voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
+	private VoicePlaybackThread voicePlaybackThread = new VoicePlaybackThread(playbackQueue); // The thread that will playback the voice data received
 	
 	// Define a boolean variable to keep track of the user being on call
 	private boolean isOnCall;
@@ -99,8 +101,10 @@ public class App extends Frame implements WindowListener, ActionListener {
 		// Start the threads
 		new Thread(messageSenderThread).start();
 		new Thread(receiverThread).start();
+		new Thread(voicePlaybackThread).start();
+		// The voice sender thread will run only during calls
 
-		// Start the thread that checks for new incoming messages
+		// Start the helper threads that checks for new incoming messages/commands/voice
 		checkIncomingThread();
 		checkCommandsThread();
 		isOnCall = false; // false by default
@@ -242,7 +246,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 				callRequested();
 				break;
 			case "CALL_ACCEPT":
-				// start voice sending thread
+				new Thread(voiceSenderThread).start();
 				break;
 			case "CALL_DENY":
 				isOnCall = false;
@@ -251,7 +255,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 			case "CALL_END":
 				isOnCall = false;
 				updateCallButton();
-				// stop voice sending
+				voiceSenderThread.stopRunning();
 			default:
 				break;
 		}
@@ -274,6 +278,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 			e.printStackTrace();
 		}
 		isOnCall = true;
+		// Start the voice sending thread
 	}
 
 	private void endCall() {
@@ -284,6 +289,8 @@ public class App extends Frame implements WindowListener, ActionListener {
 			e.printStackTrace();
 		}
 		isOnCall = false;
+		// Stop the voice sending thread
+		voiceSenderThread.stopRunning();
 	}
 	
 	private void callRequested() {
@@ -293,14 +300,15 @@ public class App extends Frame implements WindowListener, ActionListener {
 			displayMessage("Call Accepted");
 			isOnCall = true;
 			updateCallButton();
+			// Start voice thread
+			new Thread(voiceSenderThread).start();
+
 			String command = "CALL_ACCEPT";
 			try {
 				outgoingMessages.put("CTL" + command); // put message to the queue, added control header
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-			// Change call button to end call
-			// Start voice thread
 		
 		} else if (choise == JOptionPane.NO_OPTION) {
 			displayMessage("Call Denied");
@@ -317,6 +325,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 		/*THE CALLING PROCESS
 	 * 1) The peer initiating the call sends a speciall call initiation message "CALL_REQUEST" to the other peer
+	 * 	  when call is initiaded the voiceSendingThread is activated. However the peer will receive the voice packets only
 	 * 2) The receiver responds with a call acknowledgment message to confirm they are ready "CALL_ACCEPT"
 	 * 	  or else they can send a call rejection message if they don't want to accept the call "CALL_DENY"
 	 * 3) Once the call is accepted both peers start the voice sender thread to transmit audio
@@ -324,8 +333,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 	 * 5) Call ending: when either peer decides to end the call they send a call termination message "CALL_END"
 	 *    to notify the other peer
 	 * 	  Both peers stop their voice sending threads and release audio resources
-	*/
-	
+	*/	
 	
 	/**
 	 * These methods have to do with the GUI. You can use them if you wish to define
