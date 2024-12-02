@@ -31,7 +31,6 @@ public class App extends Frame implements WindowListener, ActionListener {
 	final static String newline="\n";		
 	static JButton callButton;				
 	
-	// TODO: Please define and initialize your variables here...
 	private static DatagramSocket socket; // the local socket through which the local host will send packets
 	private static InetAddress peerAddress; // the IP address of the peer
 	private static int localPort; // the transport layer port of local host
@@ -120,7 +119,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		/*
 		 * 1. Create the app's window
 		 */
-		App app = new App("Chat & VoIP App");  // TODO: You can add the title that will displayed on the Window of the App here																		  
+		App app = new App("Chat & VoIP App");																  
 		app.setSize(500,250);				  
 		app.setVisible(true);				  
 
@@ -177,25 +176,19 @@ public class App extends Frame implements WindowListener, ActionListener {
 		} else if(event.getSource() == callButton){
 			// The "Call" button was clicked
 			if (!isOnCall) {
+				isOnCall = true;
+				callButton.setText("End Call");
 				startCall();
 			} else {
+				isOnCall = false;
+				callButton.setText("Call");
 				endCall();
 			}
-			updateCallButton();
 		} else if(event.getSource() == inputTextField){
 			// Enter was pressed
 			sendMessage();
 		}
 	}
-
-	private void updateCallButton() {
-		if(isOnCall) {
-			callButton.setText("End Call");
-		} else {
-			callButton.setText("Call");
-		}
-	}
-
 
 
 
@@ -248,7 +241,6 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 
 
-
 	// This is a helper thread that will check the incomingControl queue for new commands
 	private void checkCommandsThread() {
 		new Thread(() -> {
@@ -271,16 +263,20 @@ public class App extends Frame implements WindowListener, ActionListener {
 				callRequested();
 				break;
 			case "CALL_ACCEPT":
-				voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
-				new Thread(voiceSenderThread).start();
+				// Start the voice thread only if the caller is still on call at the time the acceptance command arrives
+				if (isOnCall) {
+					// Start the voice sending thread
+					voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
+					new Thread(voiceSenderThread).start();
+				}
 				break;
 			case "CALL_DENY":
 				isOnCall = false;
-				updateCallButton();
+				callButton.setText("Call");
 				break;
 			case "CALL_END":
 				isOnCall = false;
-				updateCallButton();
+				callButton.setText("Call");
 				voiceSenderThread.stopRunning();
 			default:
 				break;
@@ -315,8 +311,10 @@ public class App extends Frame implements WindowListener, ActionListener {
 			e.printStackTrace();
 		}
 		isOnCall = false;
-		// Stop the voice sending thread
-		voiceSenderThread.stopRunning();
+		// Stop the voice sending thread if it's currently running (it will be null otherwise)
+		if(voiceSenderThread != null){
+			voiceSenderThread.stopRunning();
+		}
 	}
 	
 	private void callRequested() {
@@ -325,7 +323,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		if(choise == JOptionPane.YES_OPTION) {
 			displayMessage("Call Accepted");
 			isOnCall = true;
-			updateCallButton();
+			callButton.setText("End Call");
 			// Start voice thread
 			new Thread(voiceSenderThread).start();
 
@@ -339,7 +337,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		} else if (choise == JOptionPane.NO_OPTION) {
 			displayMessage("Call Denied");
 			isOnCall = false;
-			updateCallButton();
+			callButton.setText("Call");
 			String command = "CALL_DENY";
 			try {
 				outgoingMessages.put("CTL" + command); // put message to the queue, added control header
