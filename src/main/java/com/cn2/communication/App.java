@@ -263,9 +263,8 @@ public class App extends Frame implements WindowListener, ActionListener {
 				callRequested();
 				break;
 			case "CALL_ACCEPT":
-				// Start the voice thread only if the caller is still on call at the time the acceptance command arrives
+				// Start the voice sending thread
 				if (isOnCall) {
-					// Start the voice sending thread
 					voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
 					new Thread(voiceSenderThread).start();
 				}
@@ -325,6 +324,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 			isOnCall = true;
 			callButton.setText("End Call");
 			// Start voice thread
+			voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
 			new Thread(voiceSenderThread).start();
 
 			String command = "CALL_ACCEPT";
