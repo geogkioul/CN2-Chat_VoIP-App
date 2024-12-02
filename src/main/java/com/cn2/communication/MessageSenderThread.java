@@ -9,6 +9,7 @@ class MessageSenderThread implements Runnable {
     private int peerPort; // This is the Transport Layer port the peer listens to
     // Use a queue for messages from the gui, rather than directly accessing the text field
     private BlockingQueue<String> outgoingMessages; // The queue that holds the messages forwarded by the app
+    private boolean running; // a boolean to keep track of thread running
     
     // Define the class constructor
     public MessageSenderThread(DatagramSocket socket, InetAddress peerAddress, int peerPort, BlockingQueue<String> outgoingMessages) {
@@ -16,13 +17,18 @@ class MessageSenderThread implements Runnable {
         this.peerAddress = peerAddress; // Assign the peer IP
         this.peerPort = peerPort; // Assign the peer port
         this.outgoingMessages = outgoingMessages; // Assign the message queue
+        this.running = true; // true by default, until forced to stop
+    }
+
+    public void stopRunning() {
+        running = false;
     }
 
     // We must implement the inherited abstract method Runnable.run()
     @Override
     public void run() {
         try {
-            while(true) {
+            while(running) {
                 // Get the next message from the queue
                 String message = outgoingMessages.take(); // Block until next message is available
                 sendMessage(message);

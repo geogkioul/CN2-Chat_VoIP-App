@@ -30,26 +30,31 @@ public class App extends Frame implements WindowListener, ActionListener {
 	public static Color gray;				
 	final static String newline="\n";		
 	static JButton callButton;				
-	
+	/* 
+	 * Definition of network related variables
+	 */
 	private static DatagramSocket socket; // the local socket through which the local host will send packets
 	private static InetAddress peerAddress; // the IP address of the peer
 	private static int localPort; // the transport layer port of local host
 	private static int peerPort; // the transport layer port of peer host
 
-	// Define the threads that we will use
+	/*
+	 * Definition of the threads that will be used
+	 */
 	private static MessageSenderThread messageSenderThread;
 	private static ReceiverThread receiverThread;
 	private static VoicePlaybackThread voicePlaybackThread;
 	private static VoiceSenderThread voiceSenderThread;
 	
-	// We will also define some queues that will ensure safe data exchange between threads
-	
+	/*
+	 * Definition of the queues that will handle data transfer between threads
+	 */
 	private static BlockingQueue<String> outgoingMessages;
 	private static BlockingQueue<String> incomingMessages;	
 	private static BlockingQueue<String> incomingControl;
 	private static BlockingQueue<byte[]> playbackQueue;
 	
-	// Define a boolean variable to keep track of the user being on call
+	// Define a boolean variable to keep track of the user being on call or not
 	private boolean isOnCall;
 
 	/**
@@ -92,7 +97,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		add(callButton);
 		
 		/*
-		* 3. Linking the buttons to the ActionListener
+		* 3. Linking the buttons and textInputField to the ActionListener
 		*/
 		sendButton.addActionListener(this);			
 		callButton.addActionListener(this);	
@@ -104,15 +109,15 @@ public class App extends Frame implements WindowListener, ActionListener {
 		incomingControl = new LinkedBlockingQueue<>();
 		playbackQueue = new LinkedBlockingQueue<>();
 
-		// Start the helper threads that checks for new incoming messages/commands/voice
+		// Start the helper threads that check for new incoming messages/commands/voice
 		checkIncomingThread();
 		checkCommandsThread();
 		isOnCall = false; // false by default
 	}
 	
 	/**
-	 * The main method of the application. It continuously listens for
-	 * new messages.
+	 * The main method of the application. It prompts the user for the network parameters
+	 * and starts the threads that will be needed for communication
 	 */
 	public static void main(String[] args){
 	
@@ -153,12 +158,11 @@ public class App extends Frame implements WindowListener, ActionListener {
 			e.printStackTrace();
 		}
 
-		// after creating the socket it's time to initialize the threads with the socket info
+		// Initialize some of the threads using the socket info, the voice threads will activate only during calls
 		messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
 		receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl, playbackQueue); // The thread that will handle receiving packets
-		voicePlaybackThread = new VoicePlaybackThread(playbackQueue); // The thread that will playback the voice data received
 
-		// and then start them all besides the voiceSenderThread which will activate only during calls
+		// Start the threads, except from the voiceSenderThread that will be used only during calls
 		new Thread(messageSenderThread).start();
 		new Thread(receiverThread).start();
 		new Thread(voicePlaybackThread).start();
@@ -177,16 +181,24 @@ public class App extends Frame implements WindowListener, ActionListener {
 			// The "Call" button was clicked
 			if (!isOnCall) {
 				isOnCall = true;
-				callButton.setText("End Call");
+				updateCallButton();
 				startCall();
 			} else {
 				isOnCall = false;
-				callButton.setText("Call");
+				updateCallButton();
 				endCall();
 			}
 		} else if(event.getSource() == inputTextField){
-			// Enter was pressed
+			// Enter was pressed in the textInputField
 			sendMessage();
+		}
+	}
+	// A function that will set the text of the Call button based on the boolean isOnCall
+	private void updateCallButton() {
+		if (isOnCall) {
+			callButton.setText("End Call");
+		} else {
+			callButton.setText("Call");
 		}
 	}
 
@@ -196,8 +208,8 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 
 
-	// The function sendMessage will take the message from inputTextField and put it in the outgoing queue
-	// the message sender will take on from that point.
+	// The function sendMessage will take the message from inputTextField and put it in the outgoingMessages queue
+	// the messageSender Thread will take on from that point by overwatching the contents of that queue
 	// Also it will display the message in the text area
 	private void sendMessage() {
 		String message = inputTextField.getText();
@@ -214,7 +226,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 			
 	}
 
-	// This is a helper thread that will check the incomingMessages queue for new messages
+	// This is a helper thread that will check the incomingMessages queue for new messages received to display them
 	private void checkIncomingThread() {
 		new Thread(() -> {
 			while (true) {
@@ -228,7 +240,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 			}
 		}).start();
 	}
-
+	// A function that displays the given message on the textArea
 	public static void displayMessage(String message) {
 		textArea.append(message + newline); // Show the message in the text area
 	}
@@ -236,12 +248,11 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 
 
-	/* CONTROL LOGIC */
+	/* CALL CONTROL LOGIC */
 
 
 
-
-	// This is a helper thread that will check the incomingControl queue for new commands
+	// This is a helper thread that will check the incomingControl queue for new call commands
 	private void checkCommandsThread() {
 		new Thread(() -> {
 			while (true) {
@@ -256,27 +267,29 @@ public class App extends Frame implements WindowListener, ActionListener {
 		}).start();
 	}
 	
-	// This function will handle the commands based on the command message
+	// This function will handle the call commands based on the command message
 	private void handleCommands(String command) {
 		switch (command) {
 			case "CALL_REQUEST":
-				callRequested();
-				break;
-			case "CALL_ACCEPT":
-				// Start the voice sending thread
-				if (isOnCall) {
-					voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
-					new Thread(voiceSenderThread).start();
+				if (!isOnCall) { // only if he isn't already in a call when he received the call request
+					callRequested(); // call the appropriate function
 				}
 				break;
-			case "CALL_DENY":
-				isOnCall = false;
-				callButton.setText("Call");
+			case "CALL_ACCEPT": // the peer accepted the call request we sent them
+				// Start the voice threads
+				voiceThreads();
+				break;
+			case "CALL_DENY": // the peer denied the call request we sent them
+				displayMessage("The peer denied your call.");
+				isOnCall = false; // change call status
+				updateCallButton();
 				break;
 			case "CALL_END":
+				displayMessage("The peer ended the call");
 				isOnCall = false;
-				callButton.setText("Call");
-				voiceSenderThread.stopRunning();
+				updateCallButton();
+				voiceThreads();
+				break;
 			default:
 				break;
 		}
@@ -287,9 +300,32 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 
 	/* CALLING LOGIC */
+	/* THE CALL CONTROL PROCESS
+	 * 1) A peer starts a call by pressing the Call button. The app sends a command CALL_REQUEST to the other peer. 
+	 * 2) Upon receival of the CALL_REQUEST, the peer can either accept or deny the call, and he will send a command CALL_ACCEPT or CALL_DENY accordingly
+	 * 	If he selects to accept the call he starts sending voice packets to the peer who started the call
+	 * 3) When the peer who started the call receives the CALL_ACCEPT command he starts sending voice packets too
+	 * 4) At any point during the call any peer can choose to end the call by pressing End Call and then he will send a CALL_END command 
+	 * 	and he will stop sending voice packets. The other peer will stop transmitting voice too when he receives the CALL_END command
+	 */
 
 
-
+	// A function to start/stop voice threads during call start/end
+	private void voiceThreads() {
+		if (isOnCall) {
+			// The thread that will send voice during calls
+			voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort);
+			new Thread(voiceSenderThread).start();
+			// The thread that will playback voice during calls
+			voicePlaybackThread = new VoicePlaybackThread(playbackQueue);
+			new Thread(voicePlaybackThread).start();
+		}
+		else {
+			// Stop the threads when call ends
+			voiceSenderThread.stopRunning();
+			voicePlaybackThread.stopRunning();
+		}
+	}
 
 	private void startCall() {
 		String command = "CALL_REQUEST";
@@ -299,7 +335,8 @@ public class App extends Frame implements WindowListener, ActionListener {
 			e.printStackTrace();
 		}
 		isOnCall = true;
-		// Start the voice sending thread
+		displayMessage("You started a call. Waiting for peer...");
+		// Wait for peer to accept in order to start voice sending thread
 	}
 
 	private void endCall() {
@@ -310,22 +347,18 @@ public class App extends Frame implements WindowListener, ActionListener {
 			e.printStackTrace();
 		}
 		isOnCall = false;
-		// Stop the voice sending thread if it's currently running (it will be null otherwise)
-		if(voiceSenderThread != null){
-			voiceSenderThread.stopRunning();
-		}
+		displayMessage("You ended the call.");
+		voiceThreads();
 	}
 	
 	private void callRequested() {
 		String[] options = {"Accept Call", "Deny Call"};
 		int choise = JOptionPane.showOptionDialog(null, "Incoming Call Request", "Call Request", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[0]);
 		if(choise == JOptionPane.YES_OPTION) {
-			displayMessage("Call Accepted");
+			displayMessage("You accepted the call.");
 			isOnCall = true;
-			callButton.setText("End Call");
-			// Start voice thread
-			voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
-			new Thread(voiceSenderThread).start();
+			updateCallButton();
+			voiceThreads();
 
 			String command = "CALL_ACCEPT";
 			try {
@@ -335,9 +368,9 @@ public class App extends Frame implements WindowListener, ActionListener {
 			}
 		
 		} else if (choise == JOptionPane.NO_OPTION) {
-			displayMessage("Call Denied");
+			displayMessage("You denied the call.");
 			isOnCall = false;
-			callButton.setText("Call");
+			updateCallButton();
 			String command = "CALL_DENY";
 			try {
 				outgoingMessages.put("CTL" + command); // put message to the queue, added control header
@@ -347,17 +380,6 @@ public class App extends Frame implements WindowListener, ActionListener {
 		}
 	}
 
-		/*THE CALLING PROCESS
-	 * 1) The peer initiating the call sends a speciall call initiation message "CALL_REQUEST" to the other peer
-	 * 	  when call is initiaded the voiceSendingThread is activated. However the peer will receive the voice packets only
-	 * 2) The receiver responds with a call acknowledgment message to confirm they are ready "CALL_ACCEPT"
-	 * 	  or else they can send a call rejection message if they don't want to accept the call "CALL_DENY"
-	 * 3) Once the call is accepted both peers start the voice sender thread to transmit audio
-	 * 4) Both peers start exchanging audio through the UDP socket, while they can still send messages
-	 * 5) Call ending: when either peer decides to end the call they send a call termination message "CALL_END"
-	 *    to notify the other peer
-	 * 	  Both peers stop their voice sending threads and release audio resources
-	*/	
 	
 	/**
 	 * These methods have to do with the GUI. You can use them if you wish to define
@@ -378,8 +400,13 @@ public class App extends Frame implements WindowListener, ActionListener {
 	@Override
 	public void windowClosing(WindowEvent e) {
 		// TODO Auto-generated method stub
+		// Stop all the threads currently running
+		messageSenderThread.stopRunning();
+		receiverThread.stopRunning();
+		isOnCall = false;
+		voiceThreads();
 		dispose();
-        	System.exit(0);
+        System.exit(0);
 	}
 
 	@Override

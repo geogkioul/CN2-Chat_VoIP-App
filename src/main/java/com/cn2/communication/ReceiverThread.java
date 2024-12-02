@@ -7,6 +7,7 @@ class ReceiverThread implements Runnable {
     private BlockingQueue<String> incomingMessages; // The queue that the receiver will put the received messages into
     private BlockingQueue<String> incomingControl; // The queue that the receiver will put the control commands into
     private BlockingQueue<byte[]> playbackQueue; // The queue that the receiver will put the voice data bytes into
+    private boolean running; // A boolean to keep track of thread running state
 
     private static final int BUFFER_SIZE = 2048; // Maximum buffer size for incoming packets
 
@@ -16,6 +17,12 @@ class ReceiverThread implements Runnable {
         this.incomingMessages = incomingMessages; // Assign the incoming messages queue
         this.incomingControl = incomingControl; // Assign the incoming messages queue
         this.playbackQueue = playbackQueue; // Assign the incoming voice audio queue
+        this.running = true; // True by default until forced to stop
+    }
+
+    // A function that will stop the thread if needed
+    public void stopRunning() {
+        running = false;
     }
     // We must implement the inherited abstract method Runnable.run()
     @Override
@@ -23,7 +30,7 @@ class ReceiverThread implements Runnable {
         // Define a receiver buffer
         byte[] buffer = new byte[BUFFER_SIZE]; // A byte array to store the incoming data
         try {
-            while(true) {
+            while(running) {
                 // Create a packet to hold the data received via the Datagram socket
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length); 
                 // When received a packet place it into the Datagram Packet
@@ -67,7 +74,7 @@ class ReceiverThread implements Runnable {
         }
     }
 
-    // Define handlers
+    // Define handlers, they will put the packets received into different queues according to the data type
     
     private void handleTextMessage(String message) {
         // Forward the message to the app to display

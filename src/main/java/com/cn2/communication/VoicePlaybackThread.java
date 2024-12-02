@@ -9,9 +9,16 @@ import javax.sound.sampled.SourceDataLine;
 
 public class VoicePlaybackThread implements Runnable{
     private BlockingQueue<byte[]> playbackQueue;
+    private boolean running; // boolean variable to keep track of thread's running state
 
     public VoicePlaybackThread(BlockingQueue<byte[]> playbackQueue) {
         this.playbackQueue = playbackQueue;
+        this.running = true; // true by default until forced to stop
+    }
+
+    // A function to stop the thread if needed
+    public void stopRunning() {
+        running = false;
     }
 
     @Override
@@ -21,7 +28,7 @@ public class VoicePlaybackThread implements Runnable{
             speakers.open();
             speakers.start();
 
-            while (true) {
+            while (running) {
                 try {
                     byte[] audioData = playbackQueue.take();
                     speakers.write(audioData, 0, audioData.length);
