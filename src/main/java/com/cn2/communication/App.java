@@ -32,22 +32,23 @@ public class App extends Frame implements WindowListener, ActionListener {
 	static JButton callButton;				
 	
 	// TODO: Please define and initialize your variables here...
-	private DatagramSocket socket; // the local socket through which the local host will send packets
-	private InetAddress peerAddress; // the IP address of the peer
-	private int localPort; // the transport layer port of local host
-	private int peerPort; // the transport layer port of peer host
+	private static DatagramSocket socket; // the local socket through which the local host will send packets
+	private static InetAddress peerAddress; // the IP address of the peer
+	private static int localPort; // the transport layer port of local host
+	private static int peerPort; // the transport layer port of peer host
+
+	// Define the threads that we will use
+	private static MessageSenderThread messageSenderThread;
+	private static ReceiverThread receiverThread;
+	private static VoicePlaybackThread voicePlaybackThread;
+	private static VoiceSenderThread voiceSenderThread;
 	
 	// We will also define some queues that will ensure safe data exchange between threads
 	
-	private BlockingQueue<String> outgoingMessages = new LinkedBlockingQueue<>();
-	private BlockingQueue<String> incomingMessages = new LinkedBlockingQueue<>();	
-	private BlockingQueue<String> incomingControl = new LinkedBlockingQueue<>();
-	private BlockingQueue<byte[]> playbackQueue = new LinkedBlockingQueue<>();
-	
-	private MessageSenderThread messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
-	private ReceiverThread receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl, playbackQueue); // The thread that will handle receiving packets
-	private VoiceSenderThread voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
-	private VoicePlaybackThread voicePlaybackThread = new VoicePlaybackThread(playbackQueue); // The thread that will playback the voice data received
+	private static BlockingQueue<String> outgoingMessages;
+	private static BlockingQueue<String> incomingMessages;	
+	private static BlockingQueue<String> incomingControl;
+	private static BlockingQueue<byte[]> playbackQueue;
 	
 	// Define a boolean variable to keep track of the user being on call
 	private boolean isOnCall;
@@ -97,12 +98,12 @@ public class App extends Frame implements WindowListener, ActionListener {
 		sendButton.addActionListener(this);			
 		callButton.addActionListener(this);	
 		inputTextField.addActionListener(this);
-				
-		// Start the threads
-		new Thread(messageSenderThread).start();
-		new Thread(receiverThread).start();
-		new Thread(voicePlaybackThread).start();
-		// The voice sender thread will run only during calls
+		
+		// Initialize the queues
+		outgoingMessages = new LinkedBlockingQueue<>();
+		incomingMessages = new LinkedBlockingQueue<>();
+		incomingControl = new LinkedBlockingQueue<>();
+		playbackQueue = new LinkedBlockingQueue<>();
 
 		// Start the helper threads that checks for new incoming messages/commands/voice
 		checkIncomingThread();
@@ -128,16 +129,40 @@ public class App extends Frame implements WindowListener, ActionListener {
 		 */
 		// Prompt the user to define network parameters
 		try {
-			app.peerAddress = InetAddress.getByName(JOptionPane.showInputDialog("Please enter the IP address of the peer:")); 
-			app.localPort = Integer.parseInt(JOptionPane.showInputDialog("Please enter the local port you want to use:"));
-			app.peerPort = Integer.parseInt(JOptionPane.showInputDialog("Please specify the peer's port:"));
-
+			String username = JOptionPane.showInputDialog("are you dolby or gkioul: ");
+			switch (username) {
+				case "dolby":
+					peerAddress = InetAddress.getByName("25.9.63.44");
+					localPort = 50000;
+					peerPort = 50001;
+					break;
+				case "gkioul":
+					peerAddress = InetAddress.getByName("25.8.217.160");
+					localPort = 50001;
+					peerPort = 50000;
+					break;
+				default:
+					peerAddress = InetAddress.getByName(JOptionPane.showInputDialog("Please enter the IP address of the peer:")); 
+					localPort = Integer.parseInt(JOptionPane.showInputDialog("Please enter the local port you want to use:"));
+					peerPort = Integer.parseInt(JOptionPane.showInputDialog("Please specify the peer's port:"));
+					break;
+			}
 			// Create the local socket. IP of socket set to wildcard address 0.0.0.0 which binds the users to the IPs of every local interface
-			app.socket = new DatagramSocket(app.localPort);
+			socket = new DatagramSocket(localPort);
 
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+
+		// after creating the socket it's time to initialize the threads with the socket info
+		messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
+		receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl, playbackQueue); // The thread that will handle receiving packets
+		voicePlaybackThread = new VoicePlaybackThread(playbackQueue); // The thread that will playback the voice data received
+
+		// and then start them all besides the voiceSenderThread which will activate only during calls
+		new Thread(messageSenderThread).start();
+		new Thread(receiverThread).start();
+		new Thread(voicePlaybackThread).start();
 	}
 
 
@@ -246,6 +271,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 				callRequested();
 				break;
 			case "CALL_ACCEPT":
+				voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort); // The thread that will handle voice sending during calls
 				new Thread(voiceSenderThread).start();
 				break;
 			case "CALL_DENY":
