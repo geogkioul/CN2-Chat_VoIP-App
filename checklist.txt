@@ -1,7 +1,0 @@
-Receiver Thread is ready. Only thing missing is to implement the handler functions in App class: 
-displayMessage()
-playVoiceData()
-handleControlMessage()
-
-MessageSenderThread is ready. I have some doubts about the Queue. But if the queue is defined in the 
-main App class i think everything will work

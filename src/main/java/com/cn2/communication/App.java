@@ -39,19 +39,30 @@ public class App extends Frame implements WindowListener, ActionListener {
 	private static int peerPort; // the transport layer port of peer host
 
 	/*
-	 * Definition of the threads that will be used
+	 * Definition of the threads that will be used for concurrency
+	 * We will use 4 threads
 	 */
-	private static MessageSenderThread messageSenderThread;
+	// This thread is responsible for sending out messages written in the text area by the user
+	private static MessageSenderThread messageSenderThread; 
+	// This thread is responsible for receiving all messages from the local socket (text, control and voice) and pass them to the appropriate handlers
 	private static ReceiverThread receiverThread;
+	// This is a thread to handle voice data received
 	private static VoicePlaybackThread voicePlaybackThread;
+	// This is a thread that records, formats and sends out the voice of the user
 	private static VoiceSenderThread voiceSenderThread;
 	
 	/*
 	 * Definition of the queues that will handle data transfer between threads
+	 * We use shared queues among threads for coordinating communication flow
+	 * in a thread-safe and efficient way
 	 */
+	// This queue holds all the messages that are send out by the user
 	private static BlockingQueue<String> outgoingMessages;
-	private static BlockingQueue<String> incomingMessages;	
+	// This queue holds all the messages that are received from the socket
+	private static BlockingQueue<String> incomingMessages;
+	// This queue holds the control commands received from the socket
 	private static BlockingQueue<String> incomingControl;
+	// This queue holds the audio data that needs to be played back
 	private static BlockingQueue<byte[]> playbackQueue;
 	
 	// Define a boolean variable to keep track of the user being on call or not
