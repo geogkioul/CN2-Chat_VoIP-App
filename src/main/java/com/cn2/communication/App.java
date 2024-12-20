@@ -125,7 +125,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		playbackQueue = new LinkedBlockingQueue<>();
 
 		// Initialize the AUDIO_FORMAT
-		AUDIO_FORMAT = new AudioFormat(44100.0f, 16, 1, true, false);
+		AUDIO_FORMAT = new AudioFormat(8000.0f, 8, 1, true, false);
 
 		// Start the helper threads that check for new incoming messages/commands/voice
 		checkIncomingThread();
