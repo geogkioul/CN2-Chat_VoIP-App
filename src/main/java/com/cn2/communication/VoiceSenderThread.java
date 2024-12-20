@@ -8,22 +8,24 @@ public class VoiceSenderThread implements Runnable {
     private DatagramSocket socket; // This is the socket the sender thread will send data from
     private InetAddress peerAddress; // This is the IP address of the peer
     private int peerPort; // This is the Transport Layer port the peer listens to
-    private boolean running; // boolean variable to safely stop the thread when needed
+    private volatile boolean running; // boolean variable to safely stop the thread when needed
+    private AudioFormat AUDIO_FORMAT; // The audio format that will be used for sound data packets
 
     // Define the class constructor
-    public VoiceSenderThread(DatagramSocket socket, InetAddress peerAddress, int peerPort) {
+    public VoiceSenderThread(DatagramSocket socket, InetAddress peerAddress, int peerPort, AudioFormat AUDIO_FORMAT) {
         this.socket = socket; // Assign local socket of thread
         this.peerAddress = peerAddress; // Assign peer's IP address
         this.peerPort = peerPort; // Assign peer's port number
         this.running = true; // true by default
+        this.AUDIO_FORMAT = AUDIO_FORMAT;
     }
 
     // We must implement the inherited abstract method Runnable.run()
     @Override
     public void run() {
-        AudioFormat AUDIO_FORMAT = getAudioFormat();
-        try (TargetDataLine microphone = AudioSystem.getTargetDataLine(AUDIO_FORMAT)) {
-
+        TargetDataLine microphone = null;
+        try {
+            microphone = AudioSystem.getTargetDataLine(AUDIO_FORMAT);
             // Open the microphone
             microphone.open(AUDIO_FORMAT);
             microphone.start();
@@ -48,15 +50,15 @@ public class VoiceSenderThread implements Runnable {
             stopRunning();
         } catch (IOException e) {
             System.err.println("Network Error Occured: " + e.getMessage());
+        } finally {
+            if (microphone != null && microphone.isOpen()) {
+                microphone.close();
+            }
         }
     }
 
     // A function to stop the thread
     public void stopRunning() {
         running = false;
-    }
-    // A function to define the audio format for audio capturing
-    private AudioFormat getAudioFormat() {
-        return new AudioFormat(44100.0f, 16, 1, true, false);
     }
  }

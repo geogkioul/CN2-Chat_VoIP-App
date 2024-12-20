@@ -9,12 +9,14 @@ import javax.sound.sampled.SourceDataLine;
 
 public class VoicePlaybackThread implements Runnable{
     private BlockingQueue<byte[]> playbackQueue;
-    private boolean running; // boolean variable to keep track of thread's running state
+    private volatile boolean running; // boolean variable to keep track of thread's running state
+    private AudioFormat AUDIO_FORMAT; // The audio format that will be used for sound data packets
 
-    public VoicePlaybackThread(BlockingQueue<byte[]> playbackQueue) {
+    public VoicePlaybackThread(BlockingQueue<byte[]> playbackQueue, AudioFormat AUDIO_FORMAT) {
         this.playbackQueue = playbackQueue;
         this.running = true; // true by default until forced to stop
-    }
+        this.AUDIO_FORMAT = AUDIO_FORMAT;
+    }   
 
     // A function to stop the thread if needed
     public void stopRunning() {
@@ -23,8 +25,9 @@ public class VoicePlaybackThread implements Runnable{
 
     @Override
     public void run() {
-        AudioFormat AUDIO_FORMAT = getAudioFormat();
-        try (SourceDataLine speakers = AudioSystem.getSourceDataLine(AUDIO_FORMAT)) {
+        SourceDataLine speakers = null;
+        try {
+            speakers = AudioSystem.getSourceDataLine(AUDIO_FORMAT);
             speakers.open();
             speakers.start();
 
@@ -41,11 +44,11 @@ public class VoicePlaybackThread implements Runnable{
         } catch (Exception e) {
             System.err.println("Error During Audio Playback.");
             e.printStackTrace();
+        } finally {
+            if(speakers != null && speakers.isOpen()){
+                speakers.drain();
+                speakers.close();
+            }
         }
-    }
-
-    // A function to define the audio format for audio capturing
-    private AudioFormat getAudioFormat() {
-        return new AudioFormat(44100.0f, 16, 1, true, false);
     }
 }

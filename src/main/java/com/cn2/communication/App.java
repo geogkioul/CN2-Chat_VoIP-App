@@ -5,6 +5,7 @@ import java.net.*;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JTextField;
+import javax.sound.sampled.AudioFormat;
 import javax.swing.JButton;
 import javax.swing.JTextArea;
 import javax.swing.JScrollPane;
@@ -68,6 +69,9 @@ public class App extends Frame implements WindowListener, ActionListener {
 	// Define a boolean variable to keep track of the user being on call or not
 	private boolean isOnCall;
 
+	// Define the Audio Format that will be used
+	private static AudioFormat AUDIO_FORMAT;
+
 	/**
 	 * Construct the app's frame and initialize important parameters
 	 */
@@ -119,6 +123,9 @@ public class App extends Frame implements WindowListener, ActionListener {
 		incomingMessages = new LinkedBlockingQueue<>();
 		incomingControl = new LinkedBlockingQueue<>();
 		playbackQueue = new LinkedBlockingQueue<>();
+
+		// Initialize the AUDIO_FORMAT
+		AUDIO_FORMAT = new AudioFormat(44100.0f, 16, 1, true, false);
 
 		// Start the helper threads that check for new incoming messages/commands/voice
 		checkIncomingThread();
@@ -173,10 +180,9 @@ public class App extends Frame implements WindowListener, ActionListener {
 		messageSenderThread = new MessageSenderThread(socket, peerAddress, peerPort, outgoingMessages); // The thread that will handle message sending
 		receiverThread = new ReceiverThread(socket, incomingMessages, incomingControl, playbackQueue); // The thread that will handle receiving packets
 
-		// Start the threads, except from the voiceSenderThread that will be used only during calls
+		// Start the threads, except from the voice threads that will be used only during calls
 		new Thread(messageSenderThread).start();
 		new Thread(receiverThread).start();
-		new Thread(voicePlaybackThread).start();
 	}
 
 
@@ -288,6 +294,8 @@ public class App extends Frame implements WindowListener, ActionListener {
 				break;
 			case "CALL_ACCEPT": // the peer accepted the call request we sent them
 				// Start the voice threads
+				displayMessage("The peer accepted your call.");
+				isOnCall = true;
 				voiceThreads();
 				break;
 			case "CALL_DENY": // the peer denied the call request we sent them
@@ -325,10 +333,10 @@ public class App extends Frame implements WindowListener, ActionListener {
 	private void voiceThreads() {
 		if (isOnCall) {
 			// The thread that will send voice during calls
-			voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort);
+			voiceSenderThread = new VoiceSenderThread(socket, peerAddress, peerPort, AUDIO_FORMAT);
 			new Thread(voiceSenderThread).start();
 			// The thread that will playback voice during calls
-			voicePlaybackThread = new VoicePlaybackThread(playbackQueue);
+			voicePlaybackThread = new VoicePlaybackThread(playbackQueue, AUDIO_FORMAT);
 			new Thread(voicePlaybackThread).start();
 		}
 		else {
@@ -410,7 +418,6 @@ public class App extends Frame implements WindowListener, ActionListener {
 
 	@Override
 	public void windowClosing(WindowEvent e) {
-		// TODO Auto-generated method stub
 		// Stop all the threads currently running
 		messageSenderThread.stopRunning();
 		receiverThread.stopRunning();

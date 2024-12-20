@@ -7,7 +7,7 @@ class ReceiverThread implements Runnable {
     private BlockingQueue<String> incomingMessages; // The queue that the receiver will put the received messages into
     private BlockingQueue<String> incomingControl; // The queue that the receiver will put the control commands into
     private BlockingQueue<byte[]> playbackQueue; // The queue that the receiver will put the voice data bytes into
-    private boolean running; // A boolean to keep track of thread running state
+    private volatile boolean running; // A boolean to keep track of thread running state
 
     private static final int BUFFER_SIZE = 2048; // Maximum buffer size for incoming packets
 
