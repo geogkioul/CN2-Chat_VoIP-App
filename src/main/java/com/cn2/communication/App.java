@@ -125,7 +125,7 @@ public class App extends Frame implements WindowListener, ActionListener {
 		playbackQueue = new LinkedBlockingQueue<>();
 
 		// Initialize the AUDIO_FORMAT
-		AUDIO_FORMAT = new AudioFormat(8000.0f, 8, 1, true, false);
+		AUDIO_FORMAT = new AudioFormat(8000.0f, 16, 1, true, false);
 
 		// Start the helper threads that check for new incoming messages/commands/voice
 		checkIncomingThread();
@@ -151,24 +151,11 @@ public class App extends Frame implements WindowListener, ActionListener {
 		 */
 		// Prompt the user to define network parameters
 		try {
-			String username = JOptionPane.showInputDialog("are you dolby or gkioul: ");
-			switch (username) {
-				case "dolby":
-					peerAddress = InetAddress.getByName("25.9.63.44");
-					localPort = 50000;
-					peerPort = 50001;
-					break;
-				case "gkioul":
-					peerAddress = InetAddress.getByName("25.8.217.160");
-					localPort = 50001;
-					peerPort = 50000;
-					break;
-				default:
-					peerAddress = InetAddress.getByName(JOptionPane.showInputDialog("Please enter the IP address of the peer:")); 
-					localPort = Integer.parseInt(JOptionPane.showInputDialog("Please enter the local port you want to use:"));
-					peerPort = Integer.parseInt(JOptionPane.showInputDialog("Please specify the peer's port:"));
-					break;
-			}
+			
+			peerAddress = InetAddress.getByName(JOptionPane.showInputDialog("Please enter the IP address of the peer:")); 
+			localPort = Integer.parseInt(JOptionPane.showInputDialog("Please enter the local port you want to use:"));
+			peerPort = Integer.parseInt(JOptionPane.showInputDialog("Please specify the peer's port:"));
+			
 			// Create the local socket. IP of socket set to wildcard address 0.0.0.0 which binds the users to the IPs of every local interface
 			socket = new DatagramSocket(localPort);
 
@@ -419,10 +406,16 @@ public class App extends Frame implements WindowListener, ActionListener {
 	@Override
 	public void windowClosing(WindowEvent e) {
 		// Stop all the threads currently running
-		messageSenderThread.stopRunning();
-		receiverThread.stopRunning();
-		isOnCall = false;
-		voiceThreads();
+		if (messageSenderThread != null) {
+			messageSenderThread.stopRunning();
+		}
+		if (receiverThread != null) {
+			receiverThread.stopRunning();
+		}
+		if (isOnCall) {
+			isOnCall = false;
+			voiceThreads();
+		}
 		dispose();
         System.exit(0);
 	}
